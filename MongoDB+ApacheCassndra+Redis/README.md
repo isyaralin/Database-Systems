@@ -1,10 +1,10 @@
-##Required Materials
+**Required Materials**
 
 Docker and Docker Compose
 Python3
 Dependencies: mongoengine, redis, pymongo
 
-##Environment Setup 
+**Environment Setup**
 
 
 Start Database
@@ -19,7 +19,8 @@ Seed Database
 Initialize Lab Data
 
 python3 main.py --insert
-###Running Queries
+
+**Running Queries**
 
 
 Query 1 (Revenue Trend):
