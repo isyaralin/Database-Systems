@@ -1,38 +1,18 @@
-You must make sure you have docker in your current environment
+# Homework 4: Polystores (Solo Version)
 
-1) **Navigate to the lab directory**:
-   `cd ~/web-master-lab07-arangodb/lab07-arangodb`
-   
+## Setup
+1. Start the polystore environment: `docker compose up -d`
+2. Seed the databases: `python3 -m python.seed_all`
+3. Activate the virtual environment: `source .venv/bin/activate`
 
-2) ** Start the Database **: 
-` docker compose up -d`
+## Execution
+Run the federated queries via the Python application using the SQLAlchemy Trino dialect:
+* Run Query 1: `python3 implementation/main.py --q1`
+* Run Query 2: `python3 implementation/main.py --q2`
 
-3) ** Initialize the Base Data **: 
-
-` python3 -m app.seed `
-
-4) ** Activate Virtual Environment **:
-` source .venv/bin/activate `
-
-** Running the solution **
-
-- Navigate to the implementation folder to execute the main script
-`cd homework3_solo/implementation`
-
-1) ** Data Extension ** 
-* Inserts 5 Brand vertices, 5 Edges connecting products to brands, and creates a persistent index on the brand name:
-- `python3 main.py --insert`
-
-2) ** Execute Graph Queries ** 
-* Each query satisfies the Shared Query Requirements including multi-hop traversals and aggregations:
-
-* Query1 (Aggregation): Product count per brand 
-- ` python3 main.py --q1`
-
-* Query2 (2-Hop Traversal): Finding customers who like "TechCorp" products 
--  `python3 main.py --q2 `
-
-* Query3 (Regional Analysis): Popular brands in the EU-CZ Regional
-- `python3 main.py --q3`
-
+## Included Catalogs
+* `mongodb` (MongoDB)
+* `cassandra` (Apache Cassandra)
+* `postgresql` (PostgreSQL)
+* `system` (Trino runtime)
 
