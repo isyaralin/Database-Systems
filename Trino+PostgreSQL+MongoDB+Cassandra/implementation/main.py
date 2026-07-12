@@ -1,95 +1,88 @@
 import argparse
-import json
-import sys
-from typing import List, Union
-from arango import ArangoClient
-from pydantic import BaseModel
+from sqlalchemy import create_engine, text
+from dataclasses import dataclass
 
-sys.path.append('../../')
-from app.config import arango_config
+engine = create_engine("trino://student@localhost:8080/system")
 
-cfg = arango_config()
-client = ArangoClient(hosts=cfg.hosts)
-db = client.db(cfg.db_name, username=cfg.username, password=cfg.password)
+@dataclass
+class CustomerProfile:
+    customer_id: int
+    full_name: str
+    region: str
+    marketing_opt_in: bool
+    total_orders: int
 
-class QueryResult(BaseModel):
-    label: str
-    value: Union[str, int, float]
+@dataclass
+class Recommendation:
+    follower_user_id: int
+    recommended_title: str
+    genres: str
+    evidence_count: int
 
-def perform_insert():
-    if not db.has_collection('brands'):
-        db.create_collection('brands')
-    if not db.has_collection('produced_by'):
-        db.create_collection('produced_by', edge=True)
-
-    db.collection('brands').add_persistent_index(fields=['name'])
-
-    brands = [
-        {"_key": "b1", "name": "TechCorp", "country": "USA"},
-        {"_key": "b2", "name": "EuroApp", "country": "Czechia"},
-        {"_key": "b3", "name": "AsiaSoft", "country": "Japan"},
-        {"_key": "b4", "name": "GlobalGear", "country": "Germany"},
-        {"_key": "b5", "name": "NordicTools", "country": "Sweden"}
-    ]
-    db.collection('brands').import_bulk(brands, overwrite=True)
-
-    edges = [
-        {"_from": "products/1", "_to": "brands/b1", "type": "original"},
-        {"_from": "products/2", "_to": "brands/b2", "type": "original"},
-        {"_from": "products/3", "_to": "brands/b3", "type": "original"},
-        {"_from": "products/4", "_to": "brands/b4", "type": "original"},
-        {"_from": "products/5", "_to": "brands/b5", "type": "original"}
-    ]
-    db.collection('produced_by').import_bulk(edges, overwrite=True)
-    return "-> Insertion complete."
-
-def query_1():
-    aql = """
-    FOR b IN brands
-      LET p_list = (FOR p IN 1..1 INBOUND b._id produced_by RETURN p)
-      RETURN { label: b.name, value: LENGTH(p_list) }
+def run_query_1():
+    sql = """
+        SELECT 
+            m.id AS customer_id,
+            m.given_name || ' ' || m.family_name AS full_name,
+            c.region,
+            c.marketing_opt_in,
+            (SELECT COUNT(*) FROM mongodb.shop.orders_flat o WHERE o.customer_id = m.id) AS total_orders
+        FROM mongodb.shop.people m
+        JOIN cassandra.shopstream.user_profile_by_id c ON c.user_id = m.id
+        JOIN postgresql.public.social_people p ON p.user_id = m.id
+        WHERE c.marketing_opt_in = true
+        ORDER BY total_orders DESC
+        LIMIT 10
     """
-    cursor = db.aql.execute(aql)
-    return [QueryResult.model_validate(row).model_dump() for row in cursor]
+    print("--- Query 1: Top Engaged Customers (Federated) ---")
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql)).mappings().all() 
+        
+        profiles = [CustomerProfile(**row) for row in rows]
+        
+        for p in profiles:
+            print(f"ID: {p.customer_id} | Name: {p.full_name} | Region: {p.region} | Orders: {p.total_orders}")
 
-def query_2():
-    aql = """
-    FOR b IN brands
-      FILTER b.name == "TechCorp"
-      FOR v IN 2..2 INBOUND b._id produced_by, likes
-        COLLECT full_name = CONCAT(v.given_name, " ", v.family_name) WITH COUNT INTO total
-        RETURN { label: full_name, value: total }
+def run_query_2():
+    sql = """
+        WITH followed_likes AS (
+            SELECT 
+                f.follower_user_id, 
+                l.item_id AS title_id, 
+                COUNT(l.user_id) as evidence_count
+            FROM postgresql.public.follows f
+            JOIN postgresql.public.likes l ON f.followed_user_id = l.user_id
+            WHERE l.item_type = 'TITLE'
+            GROUP BY f.follower_user_id, l.item_id
+        )
+        SELECT 
+            fl.follower_user_id,
+            t.name AS recommended_title,
+            t.genres,
+            fl.evidence_count
+        FROM followed_likes fl
+        JOIN cassandra.shopstream.title_page_by_id t ON t.title_id = fl.title_id
+        WHERE fl.follower_user_id = :target_user
+        ORDER BY fl.evidence_count DESC
+        LIMIT 10
     """
-    cursor = db.aql.execute(aql)
-    return [QueryResult.model_validate(row).model_dump() for row in cursor]
-
-def query_3():
-    aql = """
-    FOR p IN people
-      FILTER p.region == "EU-CZ"
-      FOR item IN 1..1 OUTBOUND p._id likes
-        FOR brand IN 1..1 OUTBOUND item._id produced_by
-          COLLECT b_name = brand.name WITH COUNT INTO likes_count
-          SORT likes_count DESC
-          LIMIT 5
-          RETURN { label: b_name, value: likes_count }
-    """
-    cursor = db.aql.execute(aql)
-    return [QueryResult.model_validate(row).model_dump() for row in cursor]
+    print("--- Query 2: Social Recommendations (Federated) ---")
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), {"target_user": 1}).mappings().all()
+        
+        recommendations = [Recommendation(**row) for row in rows]
+        
+        for r in recommendations:
+            print(f"Title: {r.recommended_title} | Genres: {r.genres} | Evidence: {r.evidence_count}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--insert", action="store_true")
-    parser.add_argument("--q1", action="store_true")
-    parser.add_argument("--q2", action="store_true")
-    parser.add_argument("--q3", action="store_true")
+    parser.add_argument("--q1", action="store_true", help="Run Query 1")
+    parser.add_argument("--q2", action="store_true", help="Run Query 2")
     args = parser.parse_args()
 
-    if args.insert:
-        print(perform_insert())
-    elif args.q1:
-        print(json.dumps(query_1(), indent=2))
-    elif args.q2:
-        print(json.dumps(query_2(), indent=2))
-    elif args.q3:
-        print(json.dumps(query_3(), indent=2))
+    if args.q1:
+        run_query_1()
+    if args.q2:
+        run_query_2()
+
