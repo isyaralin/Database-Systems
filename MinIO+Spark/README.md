@@ -1,3 +1,22 @@
+**Download material and data**
+
+# Linux/macOS:
+curl -L -o lab01-minio-spark.zip "https://gitlab.mff.cuni.cz/teaching/ndbi040/web/-/archive/master/web-master.zip?ref_type=heads&path=lab01-minio-spark"
+unzip lab01-minio-spark.zip
+cd web-master-lab01-minio-spark
+cd lab01-minio-spark
+ls -l
+
+# Windows:
+curl.exe -L -o lab01-minio-spark.zip "https://gitlab.mff.cuni.cz/teaching/ndbi040/web/-/archive/master/web-master.zip?ref_type=heads&path=lab01-minio-spark"
+tar -xf lab01-minio-spark.zip
+cd web-master-lab01-minio-spark
+cd lab01-minio-spark
+dir
+
+
+
+
 1) Project Overview 
 
 This project contains two PySpark workflows designed to process raw transaction data (transactions.csv) stored in a MinIO S3 bucket and save the result in an optimized Parquet format 
